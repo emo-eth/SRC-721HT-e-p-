@@ -4,3 +4,6 @@
 [submodule "lib/sol-heap"]
 	path = lib/sol-heap
 	url = https://github.com/jameswenzel/sol-heap
+[submodule "lib/solady"]
+	path = lib/solady
+	url = https://github.com/vectorized/solady
