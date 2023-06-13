@@ -2,5 +2,13 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+remappings = [
+    'solady/=lib/solady/src/',
+    'seaport-sol/=lib/seaport-sol/src/',
+    'seaport-types/=lib/seaport-types/src/',
+    'forge-std/=lib/forge-std/src/',
+    'ds-test/=lib/ds-test/src/',
+    'sol-heap/=lib/sol-heap/src/',
+]
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
