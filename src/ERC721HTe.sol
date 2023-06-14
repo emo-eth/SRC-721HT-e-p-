@@ -7,12 +7,18 @@ import {ERC2981} from "./lib/ERC2981.sol";
 import {MinHeapMap, Heap} from "sol-heap/MinHeapMap.sol";
 import {Node, NodeType} from "sol-heap/lib/NodeType.sol";
 import {HeapMetadata, HeapMetadataType} from "sol-heap/lib/HeapMetadataType.sol";
-import {HT} from "./HT.sol";
+import {eHT} from "./eHT.sol";
 
-contract ERC721HT is AbstractERC721HT, HT {
-    constructor(uint256 feeBps, address initialOwner, address payable feeRecipient)
-        HT(feeBps, initialOwner, feeRecipient)
-    {}
+contract ERC721HTe is AbstractERC721HT, eHT {
+    constructor(
+        uint256 confirmationOpen,
+        uint256 confirmationDeadline,
+        uint256 auctionDeadline,
+        uint256 finalDeadline,
+        uint256 feeBps,
+        address initialOwner,
+        address payable feeRecipient
+    ) eHT(confirmationOpen, confirmationDeadline, auctionDeadline, finalDeadline, feeBps, initialOwner, feeRecipient) {}
 
     function supportsInterface(bytes4 interfaceId)
         public
