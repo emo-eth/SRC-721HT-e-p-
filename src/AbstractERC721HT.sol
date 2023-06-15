@@ -13,6 +13,7 @@ abstract contract AbstractERC721HT is ERC721, AbstractHT {
     using HeapMetadataType for HeapMetadata;
 
     error InvalidPayment();
+    error NativeTransferFailed();
 
     string _name;
     string _symbol;
@@ -98,7 +99,12 @@ abstract contract AbstractERC721HT is ERC721, AbstractHT {
         feeRecord.update(tokenId, newFee);
         // external call to self bypasses fee reset, which avoids an extra SSTORE+SLOAD vs incrementing
         // numFeeOverrides
+        address oldOwner = _ownerOf(tokenId);
         this.transferFrom(_ownerOf(tokenId), msg.sender, tokenId);
+        (bool success,) = oldOwner.call{value: currentPrice}("");
+        if (!success) {
+            revert NativeTransferFailed();
+        }
     }
 
     //////////////

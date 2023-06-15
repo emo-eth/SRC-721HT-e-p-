@@ -12,7 +12,7 @@ contract eHT is HT {
     uint256 public immutable CONFIRMATION_WINDOW_OPEN_TIMESTAMP;
     uint256 public immutable CONFIRMATION_WINDOW_DEADLINE_TIMESTAMP;
     uint256 public immutable DUTCH_AUCTION_DURATION;
-    uint256 public constant CONFIRMED = type(uint160).max;
+    uint256 public constant CONFIRMED = type(uint152).max;
 
     error InvalidAuctionDeadline();
     error InvalidConfirmationDeadline();

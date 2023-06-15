@@ -16,6 +16,8 @@ abstract contract AbstractHT is ERC2981, Ownable {
     uint256 internal constant BPS = 10_000;
     address payable public immutable FEE_RECIPIENT;
     Heap feeRecord;
+    uint256 constant MAX_NODE_VALUE = (1 << 159) - 1;
+    uint256 constant PENDING_CONTEXT = 1 << 159;
 
     constructor(uint256 feeBps, address initialOwner, address payable feeRecipient) {
         if (feeBps > BPS || feeBps == 0) {
@@ -24,6 +26,17 @@ abstract contract AbstractHT is ERC2981, Ownable {
         FEE_BPS = feeBps;
         FEE_RECIPIENT = feeRecipient;
         _initializeOwner(initialOwner);
+    }
+
+    function setPendingStatus(uint256 tokenId, bool isPending) internal virtual {
+        Node node = feeRecord.get(tokenId);
+        uint256 value = node.value();
+        if (isPending) {
+            value |= PENDING_CONTEXT;
+        } else {
+            value & MAX_NODE_VALUE;
+        }
+        feeRecord.update(tokenId, value);
     }
 
     function getCurrentFeeAndPrice(uint256 tokenId) public view virtual returns (uint256 fee, uint256 price);

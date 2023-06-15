@@ -17,7 +17,7 @@ contract HT is AbstractHT {
 
     function getCurrentFeeAndPrice(uint256 tokenId) public view override returns (uint256 fee, uint256 price) {
         Node node = feeRecord.get(tokenId);
-        fee = node.value();
+        fee = node.value() & MAX_NODE_VALUE;
         price = getPriceFromFee(fee);
     }
 
