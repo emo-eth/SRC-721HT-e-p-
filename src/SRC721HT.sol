@@ -11,6 +11,8 @@ import {Node, NodeType} from "sol-heap/lib/NodeType.sol";
 contract SRC721HT is ERC721HT, ContractOffererInterface {
     using MinHeapMap for Heap;
 
+    error OnlySeaport();
+
     error TokenExceededFreeTransfers();
 
     address immutable SEAPORT;
@@ -40,6 +42,9 @@ contract SRC721HT is ERC721HT, ContractOffererInterface {
         SpentItem[] calldata maximumSpent,
         bytes calldata // encoded based on the schemaID
     ) external returns (SpentItem[] memory offer, ReceivedItem[] memory consideration) {
+        if (msg.sender != SEAPORT) {
+            revert OnlySeaport();
+        }
         // TODO: should use WrappedNative token for maximumSpent, since smart contracts can reject Ether
         offer = minimumReceived;
         consideration = allocateReceivedItems(minimumReceived);
@@ -48,6 +53,8 @@ contract SRC721HT is ERC721HT, ContractOffererInterface {
         consideration[minimumReceived.length].recipient = payable(FEE_RECIPIENT);
         // calculate the average fee for all items (if multiple)
         uint256 feeAverage = maximumSpent[minimumReceived.length].amount / minimumReceived.length;
+
+        // populate the maximumSpent for each item
         for (uint256 i; i < minimumReceived.length;) {
             SpentItem calldata spentItem = minimumReceived[i];
             uint256 id;
@@ -76,33 +83,8 @@ contract SRC721HT is ERC721HT, ContractOffererInterface {
             if (currentOwner != address(this)) {
                 this.transferFrom(currentOwner, address(this), id);
             }
-            // update heap
+            // update priority queue with new fee for id
             feeRecord.update(id, feeAverage);
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    function allocateReceivedItems(SpentItem[] calldata minimumReceived)
-        internal
-        pure
-        returns (ReceivedItem[] memory consideration)
-    {
-        consideration = new ReceivedItem[](minimumReceived.length);
-        uint256 newLength;
-        unchecked {
-            newLength = minimumReceived.length + 1;
-        }
-        for (uint256 i; i < minimumReceived.length;) {
-            consideration[i] = ReceivedItem({
-                itemType: ItemType.NATIVE,
-                token: address(0),
-                identifier: 0,
-                amount: 0,
-                recipient: payable(address(0))
-            });
-
             unchecked {
                 ++i;
             }
@@ -125,19 +107,55 @@ contract SRC721HT is ERC721HT, ContractOffererInterface {
         bytes32[] calldata,
         uint256
     ) external returns (bytes4 ratifyOrderMagicValue) {
+        if (msg.sender != SEAPORT) {
+            revert OnlySeaport();
+        }
         for (uint256 i; i < offer.length;) {
             SpentItem memory spentItem = offer[i];
+            // ensure no excess transfers, ie, fee evasion
             if (!_getFreeTransferContext(spentItem.identifier)) {
                 revert TokenExceededFreeTransfers();
             }
+            // clear the free transfer context for this id
             _clearFreeTransferContext(spentItem.identifier);
-            // clear temporary storage for refund
+            // clear temporary storage for gas refund
             lastFeePayers[uint32(spentItem.identifier)] = address(0);
             unchecked {
                 ++i;
             }
         }
         return ContractOffererInterface.ratifyOrder.selector;
+    }
+
+    /**
+     * @notice Allocate an array of ReceivedItems, with length minimumreceived.length + 1,
+     *         one for each item in minimumReceived, and one for the cumulative fee.
+     * @param minimumReceived The minimum items that the caller is willing to
+     */
+    function allocateReceivedItems(SpentItem[] calldata minimumReceived)
+        internal
+        pure
+        returns (ReceivedItem[] memory consideration)
+    {
+        consideration = new ReceivedItem[](minimumReceived.length);
+        uint256 newLength;
+        unchecked {
+            newLength = minimumReceived.length + 1;
+        }
+        // fill the array with empty ReceivedItems
+        for (uint256 i; i < minimumReceived.length;) {
+            consideration[i] = ReceivedItem({
+                itemType: ItemType.NATIVE,
+                token: address(0),
+                identifier: 0,
+                amount: 0,
+                recipient: payable(address(0))
+            });
+
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     /**
