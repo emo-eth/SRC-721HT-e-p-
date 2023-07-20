@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {HT} from "./HT.sol";
+import {HarbergerFee} from "./HarbergerFee.sol";
 import {MinHeapMap, Heap} from "sol-heap/MinHeapMap.sol";
 
-contract eHT is HT {
+contract HarbergerFeeEphemeral is HarbergerFee {
     using MinHeapMap for Heap;
 
     uint256 public immutable FINAL_DEADLINE_TIMESTAMP;
@@ -27,7 +27,7 @@ contract eHT is HT {
         uint256 feeBps,
         address initialOwner,
         address payable feeRecipient
-    ) HT(feeBps, initialOwner, feeRecipient) {
+    ) HarbergerFee(feeBps, initialOwner, feeRecipient) {
         if (block.timestamp > confirmationOpen) {
             revert InvalidConfirmationOpen();
         }

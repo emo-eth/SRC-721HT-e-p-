@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {eHT} from "../../src/eHT.sol";
+import {HarbergerFeeEphemeral} from "../../src/HarbergerFeeEphemeral.sol";
 import {MinHeapMap, Heap} from "sol-heap/MinHeapMap.sol";
 import {Node, NodeType} from "sol-heap/lib/NodeType.sol";
 
-contract eHTImpl is eHT {
+contract eHTImpl is HarbergerFeeEphemeral {
     using MinHeapMap for Heap;
 
     constructor(
@@ -16,7 +16,17 @@ contract eHTImpl is eHT {
         uint256 feeBps,
         address initialOwner,
         address payable feeRecipient
-    ) eHT(finalDeadline, auctionDeadline, confirmationOpen, confirmationDeadline, feeBps, initialOwner, feeRecipient) {}
+    )
+        HarbergerFeeEphemeral(
+            finalDeadline,
+            auctionDeadline,
+            confirmationOpen,
+            confirmationDeadline,
+            feeBps,
+            initialOwner,
+            feeRecipient
+        )
+    {}
 
     function confirm(uint256 tokenId) public {
         _confirm(tokenId);

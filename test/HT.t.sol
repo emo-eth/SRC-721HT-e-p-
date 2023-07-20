@@ -2,28 +2,28 @@
 pragma solidity ^0.8.17;
 
 import {Test} from "forge-std/Test.sol";
-// import {HT} from "../src/HT.sol";
-import {HTImpl} from "./helpers/HTImpl.sol";
+// import {HT} from "../src/HarbergerFee.sol";
+import {HarbergerFeeImpl} from "./helpers/HTImpl.sol";
 
 contract HTTest is Test {
-    HTImpl test;
+    HarbergerFeeImpl test;
 
     receive() external payable {}
 
     function setUp() public {
-        test = new HTImpl(100, address(this), payable(address(this)));
+        test = new HarbergerFeeImpl(100, address(this), payable(address(this)));
     }
 
     function testStaticGetters(uint256 feeBps) public {
         feeBps = bound(feeBps, 1, 10_000);
-        test = new HTImpl(feeBps, address(this), payable(address(this)));
+        test = new HarbergerFeeImpl(feeBps, address(this), payable(address(this)));
         assertEq(test.getFeeFromPrice(1234e9), (1234e9 * feeBps) / 10_000);
         assertEq(test.getPriceFromFee(1234e9), (1234e9 * 10_000) / feeBps);
     }
 
     function testDynamicGetters(uint256 feeBps) public {
         feeBps = bound(feeBps, 1, 10_000);
-        test = new HTImpl(feeBps, address(this), payable(address(this)));
+        test = new HarbergerFeeImpl(feeBps, address(this), payable(address(this)));
         test.setFee(1, 1234e9);
         test.setFee(2, 5678e9);
         (address recip, uint256 fee) = test.royaltyInfo(1, 1234e9);

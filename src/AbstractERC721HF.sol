@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {AbstractHT} from "./AbstractHT.sol";
+import {AbstractHarbergerFee} from "./AbstractHarbergerFee.sol";
 import {ERC721} from "solady/tokens/ERC721.sol";
 import {ERC2981} from "./lib/ERC2981.sol";
 import {MinHeapMap, Heap} from "sol-heap/MinHeapMap.sol";
 import {Node, NodeType} from "sol-heap/lib/NodeType.sol";
 import {HeapMetadata, HeapMetadataType} from "sol-heap/lib/HeapMetadataType.sol";
 
-abstract contract AbstractERC721HT is ERC721, AbstractHT {
+abstract contract AbstractERC721HF is ERC721, AbstractHarbergerFee {
     using MinHeapMap for Heap;
     using HeapMetadataType for HeapMetadata;
 

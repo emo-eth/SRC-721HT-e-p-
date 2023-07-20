@@ -2,13 +2,13 @@
 pragma solidity ^0.8.17;
 
 import {ContractOffererInterface, IERC165} from "seaport-types/interfaces/ContractOffererInterface.sol";
-import {AbstractERC721HT} from "./AbstractERC721HT.sol";
+import {AbstractERC721HF} from "./AbstractERC721HF.sol";
 import {SpentItem, ReceivedItem, Schema} from "seaport-types/lib/ConsiderationStructs.sol";
 import {ItemType} from "seaport-types/lib/ConsiderationEnums.sol";
 import {MinHeapMap, Heap} from "sol-heap/MinHeapMap.sol";
 import {Node, NodeType} from "sol-heap/lib/NodeType.sol";
 
-abstract contract AbstractSRC721HT is AbstractERC721HT, ContractOffererInterface {
+abstract contract AbstractSRC721HF is AbstractERC721HF, ContractOffererInterface {
     using MinHeapMap for Heap;
 
     error OnlySeaport();
@@ -200,10 +200,11 @@ abstract contract AbstractSRC721HT is AbstractERC721HT, ContractOffererInterface
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ContractOffererInterface, AbstractERC721HT)
+        virtual
+        override(ContractOffererInterface, AbstractERC721HF)
         returns (bool)
     {
         return
-            interfaceId == type(ContractOffererInterface).interfaceId || AbstractERC721HT.supportsInterface(interfaceId);
+            interfaceId == type(ContractOffererInterface).interfaceId || AbstractERC721HF.supportsInterface(interfaceId);
     }
 }
