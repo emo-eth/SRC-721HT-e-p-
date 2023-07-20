@@ -11,17 +11,27 @@ import {Node, NodeType} from "sol-heap/lib/NodeType.sol";
 abstract contract AbstractSRC721HF is AbstractERC721HF, ContractOffererInterface {
     using MinHeapMap for Heap;
 
+    /// @dev Used if the caller is not the Seaport contract.
     error OnlySeaport();
 
+    /// @dev Used if the token has exceeded the number of free transfers allowed.
     error TokenExceededFreeTransfers();
 
+    /// @dev The address of the Seaport contract, which is the only contract that can call certain functions.
     address immutable SEAPORT;
+
+    /**
+     * @dev Since a token may be included in multiple orders, and the FeeRecord is updated before any token transfers
+     *      occur, the contract must store the last fee payer for each token. This is used to route payments to the
+     *      previous fee payer.
+     *      When the stored address is the null address, the owner of the token should be used used.
+     *
+     */
+    mapping(uint32 id => address lastFeePayer) internal lastFeePayers;
 
     constructor(address seaport) {
         SEAPORT = seaport;
     }
-
-    mapping(uint32 id => address lastFeePayer) internal lastFeePayers;
 
     /**
      * @dev Generates an order with the specified minimum and maximum spent
@@ -31,56 +41,91 @@ abstract contract AbstractSRC721HF is AbstractERC721HF, ContractOffererInterface
      *                        receive.
      * @param maximumSpent    The maximum items the caller is willing to spend.
      *
-     * @return offer         A tuple containing the offer items.
-     * @return consideration A tuple containing the consideration items.
+     * @return newMinimumReceived  A tuple containing the offer items.
+     * @return newMaximumSpent     A tuple containing the consideration items.
      */
     function generateOrder(
         address,
         SpentItem[] calldata minimumReceived,
         SpentItem[] calldata maximumSpent,
         bytes calldata // encoded based on the schemaID
-    ) external returns (SpentItem[] memory offer, ReceivedItem[] memory consideration) {
+    ) external returns (SpentItem[] memory newMinimumReceived, ReceivedItem[] memory newMaximumSpent) {
+        // since this function alters state and assumes it is being called in the context of a Seaport order,
+        // it must be called by the Seaport contract
         if (msg.sender != SEAPORT) {
             revert OnlySeaport();
         }
-        // TODO: should use WrappedNative token for maximumSpent, since smart contracts can reject Ether
-        offer = minimumReceived;
-        consideration = allocateReceivedItems(minimumReceived);
-        // read the total fee from the final provided maximumSpent item
-        consideration[minimumReceived.length].amount = maximumSpent[minimumReceived.length].amount;
-        consideration[minimumReceived.length].recipient = payable(FEE_RECIPIENT);
-        // calculate the average fee for all items (if multiple)
-        uint256 feeAverage = maximumSpent[minimumReceived.length].amount / minimumReceived.length;
+        // copy calldata arrays into memory for modification
+        // TODO: should use WrappedNative token for maximumSpent, since smart contracts can reject Ether.
+        newMinimumReceived = minimumReceived;
+        // it's cheaper to allocate a new array than to copy the old one, which might contain incorrect
+        // values anyway. Seaport will check returned values match the original.
+        newMaximumSpent = allocateMaximumSpentArray(minimumReceived);
 
+        // assume the final provided maximumSpent item is the fee paid, and copy its value
+        uint256 totalFeePaid = maximumSpent[minimumReceived.length].amount;
+        newMaximumSpent[minimumReceived.length].amount = totalFeePaid;
+        // always pay the fee to the fee recipient
+        newMaximumSpent[minimumReceived.length].recipient = payable(FEE_RECIPIENT);
+
+        // calculate the average fee for all items (if multiple)
+        uint256 feeAverage = totalFeePaid / minimumReceived.length;
+
+        updateItems(minimumReceived, newMinimumReceived, newMaximumSpent, feeAverage);
+
+        return (newMinimumReceived, newMaximumSpent);
+    }
+
+    function updateItems(
+        SpentItem[] calldata minimumReceived,
+        SpentItem[] memory newMinimumReceived,
+        ReceivedItem[] memory newMaximumSpent,
+        uint256 feeAverage
+    ) internal {
         // populate the maximumSpent for each item
         for (uint256 i; i < minimumReceived.length;) {
             SpentItem calldata spentItem = minimumReceived[i];
             uint256 id;
-            // if a wildcard order, get the cheapest item from the priority queue
+            // if a wildcard item, get the cheapest item from the priority queue
             if (spentItem.itemType == ItemType.ERC721_WITH_CRITERIA) {
                 id = feeRecord.metadata.rootKey();
+                // update the returned item to be a concrete (non-criteria) item
+                SpentItem memory wildcardItem = newMinimumReceived[i];
+                wildcardItem.identifier = id;
+                wildcardItem.itemType = ItemType.ERC721;
             } else {
                 id = uint32(spentItem.identifier);
             }
-            // get price of the token
+            // get current compulsory price of the token
             (, uint256 price) = getCurrentFeeAndPrice(id);
 
-            // get to whom the price should be paid
+            // get to whom the compulsory price should be paid
             address lastFeePayer = lastFeePayers[uint32(id)];
             if (lastFeePayer == address(0)) {
                 lastFeePayer = ownerOf(id);
             }
+
             // set the amount and recipient of actual maxSpent
-            consideration[i].amount = price;
-            consideration[i].recipient = payable(lastFeePayer);
+            ReceivedItem memory maximumSpentItem = newMaximumSpent[i];
+            maximumSpentItem.amount = price;
+            maximumSpentItem.recipient = payable(lastFeePayer);
+
+            // update free transfer context for this id
             uint256 numTransfers = getNumFreeTransfers(id);
             unchecked {
                 _setNumFreeTransfers(id, uint32(numTransfers + 1));
             }
-            address currentOwner = _ownerOf(id);
+            // update last fee payer for this id
+            // TODO: shouldn't always use fulfiller, especially in matchorders context.
+            // TODO: will have to figure out how to handle the matchOrders case so offerers' fees are recorded
+            lastFeePayers[uint32(id)] = address(0);
+
+            // take ownership of the token if not already owned by this contract
+            address currentOwner = ownerOf(id);
             if (currentOwner != address(this)) {
                 this.transferFrom(currentOwner, address(this), id);
             }
+
             // update priority queue with new fee for id
             feeRecord.update(id, feeAverage);
             unchecked {
@@ -126,11 +171,11 @@ abstract contract AbstractSRC721HF is AbstractERC721HF, ContractOffererInterface
     }
 
     /**
-     * @notice Allocate an array of ReceivedItems, with length minimumreceived.length + 1,
+     * @notice Allocate an array of ReceivedItems, with length minimumReceived.length + 1,
      *         one for each item in minimumReceived, and one for the cumulative fee.
      * @param minimumReceived The minimum items that the caller is willing to
      */
-    function allocateReceivedItems(SpentItem[] calldata minimumReceived)
+    function allocateMaximumSpentArray(SpentItem[] calldata minimumReceived)
         internal
         pure
         returns (ReceivedItem[] memory consideration)
@@ -141,6 +186,7 @@ abstract contract AbstractSRC721HF is AbstractERC721HF, ContractOffererInterface
             newLength = minimumReceived.length + 1;
         }
         // fill the array with empty ReceivedItems
+        // TODO: use WETH
         for (uint256 i; i < minimumReceived.length;) {
             consideration[i] = ReceivedItem({
                 itemType: ItemType.NATIVE,
@@ -161,24 +207,68 @@ abstract contract AbstractSRC721HF is AbstractERC721HF, ContractOffererInterface
      *      set of received items, maximum set of spent items, and context
      *      (supplied as extraData).
      *
-     * @param caller          The address of the caller (e.g. Seaport).
-     * @param fulfiller       The address of the fulfiller (e.g. the account
      *                        calling Seaport).
      * @param minimumReceived The minimum items that the caller is willing to
      *                        receive.
      * @param maximumSpent    The maximum items the caller is willing to spend.
-     * @param context         Additional context of the order.
      *
-     * @return offer         A tuple containing the offer items.
-     * @return consideration A tuple containing the consideration items.
+     * @return newMinimumReceived         A tuple containing the offer items.
+     * @return newMaximumSpent A tuple containing the consideration items.
      */
     function previewOrder(
-        address caller,
-        address fulfiller,
+        address,
+        address,
         SpentItem[] calldata minimumReceived,
         SpentItem[] calldata maximumSpent,
-        bytes calldata context // encoded based on the schemaID
-    ) external view returns (SpentItem[] memory offer, ReceivedItem[] memory consideration) {}
+        bytes calldata // encoded based on the schemaID
+    ) external view returns (SpentItem[] memory newMinimumReceived, ReceivedItem[] memory newMaximumSpent) {
+        // since this function alters state and assumes it is being called in the context of a Seaport order,
+        // it must be called by the Seaport contract
+        if (msg.sender != SEAPORT) {
+            revert OnlySeaport();
+        }
+        // TODO: should use WrappedNative token for maximumSpent, since smart contracts can reject Ether.
+        newMinimumReceived = minimumReceived;
+        newMaximumSpent = allocateMaximumSpentArray(minimumReceived);
+
+        // read the total fee paid from the final provided maximumSpent item
+        uint256 totalFeePaid = maximumSpent[minimumReceived.length].amount;
+        newMaximumSpent[minimumReceived.length].amount = totalFeePaid;
+        // always pay the fee to the fee recipient
+        newMaximumSpent[minimumReceived.length].recipient = payable(FEE_RECIPIENT);
+
+        // populate the maximumSpent for each item
+        for (uint256 i; i < minimumReceived.length;) {
+            SpentItem calldata spentItem = minimumReceived[i];
+            uint256 id;
+            // if a wildcard item, get the cheapest item from the priority queue
+            if (spentItem.itemType == ItemType.ERC721_WITH_CRITERIA) {
+                id = feeRecord.metadata.rootKey();
+                // update the returned item to be a concrete (non-criteria) item
+                SpentItem memory wildcardItem = newMinimumReceived[i];
+                wildcardItem.identifier = id;
+                wildcardItem.itemType = ItemType.ERC721;
+            } else {
+                id = uint32(spentItem.identifier);
+            }
+            // get current compulsory price of the token
+            (, uint256 price) = getCurrentFeeAndPrice(id);
+
+            // get to whom the compulsory price should be paid
+            address lastFeePayer = lastFeePayers[uint32(id)];
+            if (lastFeePayer == address(0)) {
+                lastFeePayer = ownerOf(id);
+            }
+
+            // set the amount and recipient of actual maxSpent
+            newMaximumSpent[i].amount = price;
+            newMaximumSpent[i].recipient = payable(lastFeePayer);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
 
     /**
      * @dev Gets the metadata for this contract offerer.

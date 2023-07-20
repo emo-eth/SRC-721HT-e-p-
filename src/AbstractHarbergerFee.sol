@@ -35,8 +35,12 @@ abstract contract AbstractHarbergerFee is ERC2981, Ownable {
     uint256 constant PENDING_CONTEXT = 1 << 159;
 
     /**
-     * @dev Maintain an onchain priority queue of fees paid per tokenId. Since price is a function of fee,
-     *      and price curves are all parallel, The top of the heap is always the cheapest token.
+     * @dev Maintain an onchain priority queue of fees paid per tokenId.
+     *      In order to maintain the invariant that the top of the heap is always the cheapest token, the following
+     *      conditions must be met:
+     *      - Price must be a function of the value stored in a Node
+     *      - All price curves must be parallel
+     *
      *      Peek: O(1)
      *      Pop: O(log(n))
      *      Insert: O(log(n))
